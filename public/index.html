@@ -1,0 +1,230 @@
+<html>
+  <head>
+    <link rel="icon" href="/favicon.png" type="image/png">
+    <link href="/style.css" rel="stylesheet" type="text/css">
+    <title>replpad</title>
+    
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.min.js"></script>
+    <script src="/jquery/console.js"></script>
+  </head>
+
+  <body>
+    <div id="header">
+      <div id="htext">
+        <a style="font-size:16pt;padding-left:0;top:10px;position:relative;" href="/">replpad</a>
+        
+        <a href="/"><span style="font-weight:normal;">#</span> New</a>
+
+        <a id="run-code" style="cursor:pointer;"><span style="font-weight:normal;position: relative;top: -1px;">></span> Run Code</a>
+
+        <a id="about" href="http://da.nielpie.rs">About</a>
+      </div>
+        
+    </div>
+    <div class="container">
+      <div class="pad" id="editor">Loading...</div>
+      <div class="repl"><div id="console"></div></div>
+    </div>
+   
+</div>
+
+
+    <script src="/jsrepl/jsrepl.js" id="jsrepl-script"></script>
+    <script src="/languages.js"></script>
+
+    <script>
+      $(function() {
+        // Creating the console.
+        var header = replit_languages.python.header + "\n";
+        window.jqconsole = $('#console').jqconsole(header, '> ');
+
+        // Abort prompt on Ctrl+Z.
+        jqconsole.RegisterShortcut('Z', function() {
+          jqconsole.AbortPrompt();
+          handler();
+        });
+        
+        // Move to line start Ctrl+A.
+        jqconsole.RegisterShortcut('A', function() {
+          jqconsole.MoveToStart();
+          handler();
+        });
+        
+        // Move to line end Ctrl+E.
+        jqconsole.RegisterShortcut('E', function() {
+          jqconsole.MoveToEnd();
+          handler();
+        });
+        
+        jqconsole.RegisterMatching('{', '}', 'brace');
+        jqconsole.RegisterMatching('(', ')', 'paran');
+        jqconsole.RegisterMatching('[', ']', 'bracket');
+        // Handle a command.
+        var handler = function(command) {
+          if (command) {
+            try {
+              jqconsole.Write('==> ' + window.eval(command) + '\n');
+            } catch (e) {
+              jqconsole.Write('ERROR: ' + e.message + '\n');
+            }
+          }
+          jqconsole.Prompt(true, handler, function(command) {
+            // Continue line if can't compile the command.
+            try {
+              Function(command);
+            } catch (e) {
+              if (/[\[\{\(]$/.test(command)) {
+                return 1;
+              } else {
+                return 0;
+              }
+            }
+            return false;
+          });
+        };
+
+        // Initiate the first prompt.
+        handler();
+
+        $("#run-code").click(function() {
+          jsrepl.eval(sharedoc.getText())
+        });
+      });
+    </script>
+
+    <script src="/ace/ace.js"></script>
+    <script src="/ace/mode-coffee.js"></script>
+    <script src="/ace/theme-idle_fingers.js"></script>
+    <script src="/channel/bcsocket.js"></script>
+    <script src="/share/share.js"></script>
+    <script src="/share/ace.js"></script>
+
+    <script>
+    var randomDocName = function(length) {
+      var chars, x;
+      if (length == null) {
+        length = 10;
+      }
+      chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-=";
+      var name = [];
+      for (x = 0; x < length; x++) {
+        name.push(chars[Math.floor(Math.random() * chars.length)]);
+      }
+      return name.join('');
+    };
+
+    window.onload = function() {
+
+      var editor = ace.edit("editor");
+
+      editor.setReadOnly(true);
+      editor.getSession().setUseSoftTabs(true);
+      editor.getSession().setTabSize(2);
+      editor.getSession().setMode("ace/mode/python");
+      editor.setTheme("ace/theme/idle_fingers");
+
+      if (!document.location.hash) {
+        document.location.hash = '#' + randomDocName();
+      }
+      var docName = "code:" + document.location.hash.slice(1);
+
+      // var span = document.getElementById('docname').innerText = docName;
+
+      sharejs.open(docName, 'text', function(error, doc) {
+        if (error) {
+          console.error(error);
+          return;
+        }
+
+        if (doc.created) {
+          doc.insert(0, "# Python editor!\n\na = 'hello '\nb = 'world!'\n\nprint a + b");
+        }
+
+        doc.attach_ace(editor);
+
+        sharedoc = doc;
+        ace_editor = editor;
+
+        editor.setReadOnly(false);
+      });
+
+      resultCallback = function(result) {
+        if (result) {
+          if (result[-1] !== '\n') {
+            result = result + '\n';
+          }
+          jqconsole.Write('=> ' + result, 'result');
+        }
+        return;
+      }
+
+      errorCallback = function(error) {
+        if (typeof error === 'object') {
+          error = error.message;
+        }
+        if (error[-1] !== '\n') {
+          error = error + '\n';
+        }
+        jqconsole.Write(String(error), 'error');
+        return;
+      }
+      
+      outputCallback = function(output, cls) {
+        if (output) {
+          jqconsole.Write(output, cls);
+          JSREPL.$this.trigger('output', [output]);
+          return void 0;
+        }
+      }
+      
+      inputCallback = function(callback) {
+        jqconsole.Input(function(result) {
+          try {
+            callback(result);
+            return JSREPL.$this.trigger('input', [result]);
+          } catch (e) {
+            return errorCallback(e);
+          }
+        });
+        return void 0;
+      }
+
+      progressCallback = function(percentage) {
+            return;
+      }
+
+      timeoutCallback = function() {
+        return;
+      }
+
+      window.jsrepl = new JSREPL({  
+          input: inputCallback,  
+          output: outputCallback,  
+          result: resultCallback,  
+          error: errorCallback,  
+          progress: progressCallback,  
+          timeout: {  
+            time: 30000,  
+            callback: timeoutCallback  
+          }
+      });
+
+      jsrepl.loadLanguage('python');
+    };
+    </script>
+    <script type="text/javascript">
+
+      var _gaq = _gaq || [];
+      _gaq.push(['_setAccount', 'UA-37795671-1']);
+      _gaq.push(['_trackPageview']);
+
+      (function() {
+        var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+        ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+        var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+      })();
+
+    </script>
+  </body>
+</html>  
+
